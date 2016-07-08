@@ -1,0 +1,214 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="description" content="QikFace Facial Verification Example">
+    <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1, maximum-scale=1">
+    <meta itemprop="description" content="Face verification">
+
+    <title>QikFace Verification Example</title>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.0/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+    <script src="https://www.qikface.com/scripts/qikface/adapter-1.0.js" type="text/javascript"></script>
+    <script src="https://www.qikface.com/scripts/qikface/qikface-1.0.js" type="text/javascript"></script>
+
+    <script type="text/javascript">
+
+        "use strict";
+
+        const webSocketAddress = "wss://qikdetekt1.qikid.com:8081/";
+        const qikFaceServiceUrl = "https://www.qikface.com/api/patron";
+
+        var _verifyEmailAddress = null;
+
+        $(document).ready(function () {
+            QikFaceWebRTC.onCancelled = onCaptureCancelled;
+            QikFaceWebRTC.onVerifySuccess = onVerifySuccess;
+            QikFaceWebRTC.onVerifyFailure = onVerifyFailure;
+            $("input[name='EmailAddress']").val(getUrlParameter("emailaddress"));
+            QikFaceWebRTC.initialiseVerify(webSocketAddress)
+            .then(function () {
+                QikFaceWebRTC.startLocalVideo();
+            });
+        });
+
+        /* Button handler for Start Verify. */
+        function onStartVerifyClick() {
+            if (!$("input[name='EmailAddress']").val()) {
+                setVerifyStatusMessage("Please enter an email address.", 1);
+            }
+            else {
+                setVerifyStatusMessage();
+                $("#captureWithWebCamButton").prop('disabled', true);
+                $("#cancelCaptureButton").prop('disabled', false);
+                _verifyEmailAddress = $("input[name='EmailAddress']").val();
+                QikFaceWebRTC.startVerify(null, _verifyEmailAddress);
+            }
+
+            return false;
+        }
+
+        /* Button handler for Cancel Verify. */
+        function onCancelVerifyClick() {
+            QikFaceWebRTC.cancelCapture(false);
+            return false;
+        }
+
+        /* Callback handler for a cancelled verification. This can occur due to the user clicking the cancel
+        button or due to an error setting up the WebRtc connection. */
+        function onCaptureCancelled() {
+            $("#captureWithWebCamButton").prop('disabled', false);
+            $("#cancelCaptureButton").prop('disabled', true);
+        }
+
+        /* Callback handler for a successful face verification. */
+        function onVerifySuccess(sessionID, confidenceScore, faceJpeg) {
+            console.log("Verification successful, score  " + confidenceScore + ".");
+            $("#webRtcConfirmContainer").hide();
+            $("#dataEntryContainer").hide();
+
+            setVerifyStatusMessage("Verification successful with a confidence of " + confidenceScore.toFixed(2) + "%.", 3);
+
+            if (faceJpeg != null) {
+                $("#verifyFaceJpeg").attr("src", 'data:image/jpeg;base64,' + faceJpeg);
+                $("#verifyFaceJpeg").show();
+            }
+
+            $("#successContainer").show();
+
+            // Loading user profile picture.
+            $.ajax({
+                method: "GET",
+                url: qikFaceServiceUrl,
+                data: {
+                    emailAddress: _verifyEmailAddress
+                }
+            })
+           .done(function (msg) {
+               //var jsonResult = JSON.parse(msg);
+               console.log("Get user result: " + JSON.stringify(msg) + ".");
+               $("#webRtcConfirmContainer").hide();
+               $("#dataEntryContainer").hide();
+               $("#dataEntryInstructions").hide();
+               var photoUrl = qikFaceServiceUrl + "/GetUserProfilePicture?publicUserID=" + msg["PublicID"];
+               console.log(photoUrl);
+               $("#profileFaceJpeg").attr("src", photoUrl);
+               $("#profileFaceJpeg").show();
+               $("#successContainer").show();
+           })
+           .fail(function (jqXHR, textStatus, errorThrown) {
+               try {
+                   var errorJson = JSON.parse(jqXHR["responseText"]);
+                   console.log("Failed: " + errorJson.Message);
+               }
+               catch (e) {
+                   console.log("Failed: " + textStatus);
+               }
+           });
+        }
+
+        /* Callback handler for a failed verification. */
+        function onVerifyFailure(errorMessage, canRetry) {
+            console.log("Biometric verification failed with error message: " + errorMessage);
+        }
+
+        /* Helper function to extract the email address from the browser address URL. */
+        var getUrlParameter = function getUrlParameter(sParam) {
+            var sPageURL = decodeURIComponent(window.location.search.substring(1)),
+                sURLVariables = sPageURL.split('&'),
+                sParameterName,
+                i;
+
+            for (i = 0; i < sURLVariables.length; i++) {
+                sParameterName = sURLVariables[i].split('=');
+
+                if (sParameterName[0] === sParam) {
+                    return sParameterName[1] === undefined ? true : sParameterName[1];
+                }
+            }
+        };
+
+        /* Helper function to display notifications regarding the verification workflow. */
+        function setVerifyStatusMessage(message, alertStatus) {
+            var verifyStatusContainer = $("#verifyStatusContainer");
+            if (message == null) {
+                verifyStatusContainer.hide();
+            }
+            else {
+                verifyStatusContainer.html(message);
+
+                switch (alertStatus) {
+                    case 0:
+                        verifyStatusContainer.attr("class", "alert alert-info");
+                        break;
+                    case 1:
+                        verifyStatusContainer.attr("class", "alert alert-warning");
+                        break;
+                    case 2:
+                        verifyStatusContainer.attr("class", "alert alert-danger");
+                        break;
+                    case 3:
+                        verifyStatusContainer.attr("class", "alert alert-success");
+                        break;
+                    default:
+                        verifyStatusContainer.attr("class", "alert alert-info");
+                        break;
+                }
+
+                verifyStatusContainer.show();
+            }
+        }
+
+    </script>
+</head>
+<body>
+
+    <div class="container" style="margin-top: 20px;">
+        <div class="row">
+            <h2>
+                QikFace Verification Demonstration
+            </h2>
+            <h4 style="margin-top: 20px; margin-bottom: 20px;" id="dataEntryInstructions">
+                <span class="glyphicon glyphicon-hand-right"></span> Please enter the email address of a previously enrolled user and then press Start Verify.
+            </h4>
+            <div class="alert alert-info" id="verifyStatusContainer" style="display: none;">
+            </div>
+            <div class="well form-group form-inline" id="dataEntryContainer">
+                <label for="EmailAddress">Email Address of User to Verify:</label>
+                <input type="text" name="EmailAddress" class="form-control input-lg" style="max-width: 50%;" />
+                <button id="captureWithWebCamButton" onclick="onStartVerifyClick();" type="button" class="btn btn-primary">Start Verify</button>
+                <button id="cancelCaptureButton" onclick="onCancelVerifyClick();" disabled type="button" class="btn btn-primary">Cancel Verify</button>
+            </div>
+            <div id="webRtcConfirmContainer">
+                <div class="QikFaceWebRTC" style="position: relative;">
+                </div>
+            </div>
+            <div id="successContainer" style="display: none; text-align: center;" class="container-fluid">
+                <div class="row" style="margin-bottom: 10px;">
+                    <button onclick="window.location.reload();" type="button" class="btn btn-primary">Try Another Verification</button>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6" style="background-color:#F0F1F1">
+                        <h3>Profile Photo</h3>
+                    </div>
+                    <div class="col-sm-6" style="background-color:#E5E6E6;">
+                        <h3>Matched Photo</h3>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6" style="background-color:#F0F1F1">
+                        <img id="profileFaceJpeg" src="" />
+                    </div>
+                    <div class="col-sm-6" style="background-color:#E5E6E6;">
+                        <img id="verifyFaceJpeg" src="" />
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
